@@ -1,8 +1,11 @@
 use std::{any::Any, collections::HashMap};
 
 #[derive(Debug)]
+struct Principal(String);
+
+#[derive(Debug)]
 enum ModuleResult {
-    Success { user_name: Option<String> },
+    Success { principal: Option<Principal> },
     Failure,
 }
 
@@ -14,7 +17,7 @@ trait CredentialsValidator {
     fn new() -> Self
     where
         Self: Sized;
-    fn process(&self, value: &dyn Credentials) -> ModuleResult;
+    fn process(&self, principal: Option<Principal>, value: &dyn Credentials) -> ModuleResult;
 }
 
 struct UserPasswordCredentialsValidator {
@@ -38,7 +41,7 @@ impl Credentials for u32 {
 }
 
 impl CredentialsValidator for UserPasswordCredentialsValidator {
-    fn process(&self, value: &dyn Credentials) -> ModuleResult {
+    fn process(&self, _principal: Option<Principal>, value: &dyn Credentials) -> ModuleResult {
         if let Some(credentials) = value.as_any().downcast_ref::<UserPasswordCredentials>() {
             let result = self
                 .users
@@ -47,7 +50,7 @@ impl CredentialsValidator for UserPasswordCredentialsValidator {
 
             match result {
                 Some(_) => ModuleResult::Success {
-                    user_name: Some(credentials.user.clone()),
+                    principal: Some(Principal(credentials.user.clone())),
                 },
                 None => ModuleResult::Failure,
             }
@@ -83,10 +86,10 @@ impl CredentialsValidator for OtpValidator {
         OtpValidator { otp: 12 }
     }
 
-    fn process(&self, value: &dyn Credentials) -> ModuleResult {
+    fn process(&self, _principal: Option<Principal>, value: &dyn Credentials) -> ModuleResult {
         if let Some(credentials) = value.as_any().downcast_ref::<u32>() {
             if *credentials == self.otp {
-                ModuleResult::Success { user_name: None }
+                ModuleResult::Success { principal: None }
             } else {
                 ModuleResult::Failure
             }
@@ -138,17 +141,18 @@ fn main() {
     workflow.add_credential_validator(1, user_password_service);
     workflow.add_credential_validator(2, Box::new(otp_validator));
 
-    let result_1 = workflow.modules[0]
-        .credential_validator
-        .process(&UserPasswordCredentials {
+    let result_1 = workflow.modules[0].credential_validator.process(
+        None,
+        &UserPasswordCredentials {
             user: "jean".to_string(),
             password: "pass".to_string(),
-        });
+        },
+    );
     println!(
         "validation du user / password : {:?}, with level {}",
         result_1, workflow.modules[0].level_of_assurance
     );
-    let result_2 = workflow.modules[1].credential_validator.process(&12);
+    let result_2 = workflow.modules[1].credential_validator.process(None, &12);
     println!(
         "validation otp : {:?} with level {}",
         result_2, workflow.modules[1].level_of_assurance
