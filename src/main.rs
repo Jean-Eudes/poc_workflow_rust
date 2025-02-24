@@ -138,6 +138,16 @@ impl Workflow {
     }
 }
 
+struct Process<'a> {
+    workflow: &'a Workflow,
+}
+
+impl<'a> Process<'a> {
+    fn new(workflow: &'a Workflow) -> Self {
+        Process { workflow }
+    }
+}
+
 // impl<T: Credentials> Module<T> {
 //     pub fn process() -> ModuleResult {
 //         todo!()
