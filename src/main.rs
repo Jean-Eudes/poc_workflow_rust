@@ -1,5 +1,18 @@
 use std::{any::Any, collections::HashMap};
 
+struct Supplier<T> {
+    function: Box<dyn Fn() -> T>,
+}
+
+impl<T> Supplier<T> {
+    fn new(function: Box<dyn Fn() -> T>) -> Self {
+        Supplier { function }
+    }
+    fn get(&self) -> T {
+        (self.function)()
+    }
+}
+
 #[derive(Debug)]
 struct Principal(String);
 
@@ -100,7 +113,7 @@ impl CredentialsValidator for OtpValidator {
 }
 
 struct Module {
-    credential_validator: Box<dyn CredentialsValidator>,
+    credential_validator: Supplier<Box<dyn CredentialsValidator>>,
     level_of_assurance: u32,
 }
 
@@ -116,7 +129,7 @@ impl Workflow {
     fn add_credential_validator(
         &mut self,
         level_of_assurance: u32,
-        credential_validator: Box<dyn CredentialsValidator>,
+        credential_validator: Supplier<Box<dyn CredentialsValidator>>,
     ) {
         self.modules.push(Module {
             credential_validator,
@@ -132,16 +145,19 @@ impl Workflow {
 // }
 
 fn main() {
-    let user_password_service: Box<dyn CredentialsValidator> =
-        Box::new(UserPasswordCredentialsValidator::new());
+    let user_password_once_cell: Supplier<Box<dyn CredentialsValidator>> =
+        Supplier::new(Box::new(|| {
+            Box::new(UserPasswordCredentialsValidator::new())
+        }));
 
-    let otp_validator = OtpValidator::new();
+    let otp_validator_once_cell: Supplier<Box<dyn CredentialsValidator>> =
+        Supplier::new(Box::new(|| Box::new(OtpValidator::new())));
 
     let mut workflow = Workflow::new();
-    workflow.add_credential_validator(1, user_password_service);
-    workflow.add_credential_validator(2, Box::new(otp_validator));
+    workflow.add_credential_validator(1, user_password_once_cell);
+    workflow.add_credential_validator(2, otp_validator_once_cell);
 
-    let result_1 = workflow.modules[0].credential_validator.process(
+    let result_1 = workflow.modules[0].credential_validator.get().process(
         None,
         &UserPasswordCredentials {
             user: "jean".to_string(),
@@ -152,9 +168,24 @@ fn main() {
         "validation du user / password : {:?}, with level {}",
         result_1, workflow.modules[0].level_of_assurance
     );
-    let result_2 = workflow.modules[1].credential_validator.process(None, &12);
+    let result_2 = workflow.modules[1]
+        .credential_validator
+        .get()
+        .process(None, &12);
     println!(
         "validation otp : {:?} with level {}",
         result_2, workflow.modules[1].level_of_assurance
     );
+
+    let x = || Box::new(32);
+    println!("{}", x());
+
+    let a: Supplier<u32> = Supplier {
+        function: Box::new(|| {
+            println!("init");
+            42
+        }),
+    };
+    println!("{}", a.get());
+    println!("{}", a.get());
 }
