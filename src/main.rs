@@ -139,12 +139,45 @@ impl Workflow {
 }
 
 struct Process<'a> {
+    current: std::slice::Iter<'a, Module>,
     workflow: &'a Workflow,
+    loa: u32,
+    credentials_validator: Option<Box<dyn CredentialsValidator>>,
 }
 
 impl<'a> Process<'a> {
-    fn new(workflow: &'a Workflow) -> Self {
-        Process { workflow }
+    fn new(workflow: &'a Workflow, loa: u32) -> Self {
+        let mut current = workflow.modules.iter();
+        let current_task = current.next().map(|m| m.credential_validator.get());
+        Process {
+            workflow,
+            current,
+            loa,
+            credentials_validator: current_task,
+        }
+    }
+
+    fn process(&mut self, credential: &dyn Credentials) {
+        if let Some(cred) = &self.credentials_validator {
+            println!("process validation workflow");
+            let result = cred.process(None, credential);
+            println!("process result {:?}", result);
+            match result {
+                ModuleResult::Success { principal: _ } => {
+                    self.credentials_validator =
+                        self.current.next().map(|m| m.credential_validator.get())
+                }
+                ModuleResult::Failure => (),
+            }
+        };
+    }
+}
+
+impl<'a> Iterator for Process<'a> {
+    type Item = &'a Module;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.current.next()
     }
 }
 
@@ -186,16 +219,9 @@ fn main() {
         "validation otp : {:?} with level {}",
         result_2, workflow.modules[1].level_of_assurance
     );
-
-    let x = || Box::new(32);
-    println!("{}", x());
-
-    let a: Supplier<u32> = Supplier {
-        function: Box::new(|| {
-            println!("init");
-            42
-        }),
-    };
-    println!("{}", a.get());
-    println!("{}", a.get());
+    let mut p1 = Process::new(&workflow, 2);
+    p1.process(&UserPasswordCredentials {
+        user: "jean".to_string(),
+        password: "pass".to_string(),
+    });
 }
